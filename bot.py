@@ -1,45 +1,30 @@
 import discord
-import os
 from discord.ext import commands
-from flask import Flask
-import threading
+import os
+import database  # importăm funcțiile din database.py
 
-# ======================
-# BOT DISCORD
-# ======================
-
-intents = discord.Intents.default()
-intents.message_content = True
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="!", intents=discord.Intents.all())
 
 @bot.event
 async def on_ready():
-    print(f"✅ Botul este online ca {bot.user}")
+    print(f"✅ Bot conectat ca {bot.user}")
+
+@bot.event
+async def on_member_join(member):
+    database.add_user(str(member))  
+    database.log_event(f"{member} s-a alăturat serverului")
+    print(f"{member} adăugat în baza de date")
 
 @bot.command()
-async def ping(ctx):
-    await ctx.send("🏓 Pong!")
+async def users(ctx):
+    users = database.get_users()
+    lista = [u["username"] for u in users.data]
+    await ctx.send("👥 Useri înregistrați: " + ", ".join(lista))
 
-# ======================
-# SERVER FLASK (pentru uptime)
-# ======================
+@bot.command()
+async def elements(ctx):
+    elems = database.get_elements()
+    lista = [f"{e['name']} - {e['description']}" for e in elems.data]
+    await ctx.send("🔹 Elemente: " + " | ".join(lista))
 
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "Botul rulează și este online!"
-
-def run():
-    app.run(host='0.0.0.0', port=8080)
-
-def keep_alive():
-    t = threading.Thread(target=run)
-    t.start()
-
-# ======================
-# PORNIRE
-# ======================
-if __name__ == "__main__":
-    keep_alive()
-    bot.run(os.getenv("DISCORD_TOKEN"))
+bot.run(os.getenv("DISCORD_TOKEN"))
