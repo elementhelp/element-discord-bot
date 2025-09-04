@@ -2,18 +2,16 @@ import os
 import discord
 from discord.ext import commands
 
-# luăm tokenul din variabilele Railway (ENV)
-TOKEN = os.getenv("DISCORD_TOKEN")
+TOKEN = os.getenv("DISCORD_TOKEN")  # ia tokenul direct din Railway Variables
 
-# intențiile botului
 intents = discord.Intents.default()
-intents.message_content = True  # ca să poată citi mesaje
+intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
-    print(f"✅ Botul este online ca {bot.user}")
+    print(f"Sunt logat ca {bot.user}")
 
 @bot.command()
 async def ping(ctx):
