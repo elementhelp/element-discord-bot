@@ -1,2 +1,20 @@
 import os
-bot.run(os.environ["MTQxMzEyMjQyMDg1NTgwMzkxNA.GQD4js.4qVAeNsutZeolL_y2Y3H3M0tOQxJn3j_OjmStA"])
+import discord
+from discord.ext import commands
+
+TOKEN = os.getenv("DISCORD_TOKEN")
+
+intents = discord.Intents.default()
+intents.message_content = True
+
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+@bot.event
+async def on_ready():
+    print(f"✅ Botul este online ca {bot.user}")
+
+@bot.command()
+async def ping(ctx):
+    await ctx.send("Pong! 🏓")
+
+bot.run(TOKEN)
