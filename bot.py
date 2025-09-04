@@ -1,56 +1,64 @@
 import os
-import discord
-from discord.ext import commands
-from discord import app_commands
-from supabase import create_client
 import uuid
+import discord
+from discord import app_commands
+from discord.ext import commands
+from supabase import create_client, Client
 
-# 🔑 Variabile din .env (trebuie puse în Railway/Replit/Render)
-TOKEN = os.getenv("DISCORD_TOKEN")
+# Variabilele din environment
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+# Conectare Supabase
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# Inițializare bot
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# Loadstring de test (tu îl poți schimba oricând)
+TEST_LOADSTRING = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/JadeSCRIPTZ/VisualScripts/refs/heads/main/maaa"))()'
+
+
 @bot.event
 async def on_ready():
-    await bot.tree.sync()
-    print(f"✅ Bot online ca {bot.user}")
+    print(f"✅ Bot conectat ca {bot.user}")
+    try:
+        synced = await bot.tree.sync()
+        print(f"Slash commands sincronizate: {len(synced)}")
+    except Exception as e:
+        print(f"❌ Eroare sync: {e}")
 
-# /generate -> creează element normal
-@bot.tree.command(name="generate", description="Generează un ID și un element nou")
+
+# /generate
+@bot.tree.command(name="generate", description="Generează un ID și un element loadstring.")
 async def generate(interaction: discord.Interaction):
-    element_id = str(uuid.uuid4())[:8]  # ID scurt
-    loadstring = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/JadeSCRIPTZ/VisualScripts/refs/heads/main/maaa"))()'
-
-    # salvăm în DB
-    supabase.table("elements").insert({
-        "id": element_id,
+    unique_id = str(uuid.uuid4())
+    data = {
+        "id": unique_id,
         "type": "element",
-        "loadstring": loadstring
-    }).execute()
-
+        "script": TEST_LOADSTRING,
+    }
+    supabase.table("elements").insert(data).execute()
     await interaction.response.send_message(
-        f"✅ Generat Element!\n**ID:** `{element_id}`\n**Loadstring:** ```{loadstring}```"
+        f"🔑 ID generat: `{unique_id}`\n📜 Loadstring:\n```lua\n{TEST_LOADSTRING}\n```"
     )
 
-# /generate-autojoiner -> creează autojoiner
-@bot.tree.command(name="generate-autojoiner", description="Generează un ID și un autojoiner nou")
+
+# /generate-autojoiner
+@bot.tree.command(name="generate-autojoiner", description="Generează un ID pentru autojoiner.")
 async def generate_autojoiner(interaction: discord.Interaction):
-    element_id = str(uuid.uuid4())[:8]
-    loadstring = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/JadeSCRIPTZ/VisualScripts/refs/heads/main/maaa"))()'
-
-    supabase.table("elements").insert({
-        "id": element_id,
+    unique_id = str(uuid.uuid4())
+    data = {
+        "id": unique_id,
         "type": "autojoiner",
-        "loadstring": loadstring
-    }).execute()
-
+        "script": TEST_LOADSTRING,
+    }
+    supabase.table("elements").insert(data).execute()
     await interaction.response.send_message(
-        f"✅ Generat AutoJoiner!\n**ID:** `{element_id}`\n**Loadstring:** ```{loadstring}```"
+        f"🤖 Autojoiner ID: `{unique_id}`\n📜 Loadstring:\n```lua\n{TEST_LOADSTRING}\n```"
     )
 
-bot.run(TOKEN)
+
+bot.run(DISCORD_TOKEN)
