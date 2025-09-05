@@ -1,9 +1,13 @@
 import os
+import secrets
 import discord
 from discord import app_commands
 from discord.ext import commands
 from supabase import create_client, Client
 
+# ---------------------------
+# CONFIG
+# ---------------------------
 TOKEN = os.getenv("DISCORD_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
@@ -16,6 +20,15 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 tree = bot.tree
+
+
+# ---------------------------
+# FUNCȚII UTILE
+# ---------------------------
+def generate_key():
+    """Generează un KEY unic pentru user"""
+    random_part = secrets.token_urlsafe(24)  # string random sigur
+    return f"ELEMENT${random_part}"
 
 
 @bot.event
@@ -62,10 +75,13 @@ async def set_username(interaction: discord.Interaction, username: str):
 @tree.command(name="generate", description="Generează scriptul Element")
 async def generate(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
-    existing = supabase.table("elements").select("id, webhook, username").eq("user_id", user_id).execute()
+    existing = supabase.table("elements").select("id, webhook, username, key").eq("user_id", user_id).execute()
 
     if not existing.data:
-        await interaction.response.send_message("❌ Nu există un script generat. Folosește `/setwebhook` și `/setusername` mai întâi.", ephemeral=True)
+        await interaction.response.send_message(
+            "❌ Nu există un script generat. Folosește `/setwebhook` și `/setusername` mai întâi.",
+            ephemeral=True
+        )
         return
 
     element = existing.data[0]
@@ -73,12 +89,18 @@ async def generate(interaction: discord.Interaction):
     webhook = element.get("webhook", "⚠️ Nu este setat")
     username = element.get("username", "⚠️ Nu este setat")
 
+    # dacă nu are key, generăm unul nou
+    key = element.get("key")
+    if not key:
+        key = generate_key()
+        supabase.table("elements").update({"key": key}).eq("id", element_id).execute()
+
     msg = (
         f"**Your Element Script**\n"
         f"🔗 Webhook: {webhook}\n"
         f"👤 Username: {username}\n\n"
-        f"ID = \"{element_id}\"\n"
-        f"loadstring(game:HttpGet(\"{ELEMENT_URL}\"))()"
+        f'KEY="{key}"\n'
+        f'loadstring(game:HttpGet("{ELEMENT_URL}"))()'
     )
 
     await interaction.response.send_message(msg, ephemeral=True)
@@ -116,4 +138,7 @@ async def generate_autojoiner(interaction: discord.Interaction):
     await interaction.response.send_message(msg, ephemeral=True)
 
 
+# ---------------------------
+# RUN BOT
+# ---------------------------
 bot.run(TOKEN)
