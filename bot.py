@@ -23,24 +23,24 @@ tree = bot.tree
 
 
 # ---------------------------
-# FUNCȚII UTILE
+# UTILS
 # ---------------------------
-def generate_key():
-    """Generează un KEY unic pentru user"""
-    random_part = secrets.token_urlsafe(24)  # string random sigur
+def generate_key() -> str:
+    """Generate a unique KEY for the user"""
+    random_part = secrets.token_urlsafe(24)
     return f"ELEMENT${random_part}"
 
 
 @bot.event
 async def on_ready():
     await tree.sync()
-    print(f"✅ Bot conectat ca {bot.user}")
+    print(f"✅ Bot connected as {bot.user}")
 
 
 # ---------------------------
 # SET WEBHOOK
 # ---------------------------
-@tree.command(name="setwebhook", description="Setează webhook-ul tău")
+@tree.command(name="setwebhook", description="Set your webhook")
 async def set_webhook(interaction: discord.Interaction, webhook: str):
     user_id = str(interaction.user.id)
 
@@ -50,13 +50,16 @@ async def set_webhook(interaction: discord.Interaction, webhook: str):
     else:
         supabase.table("elements").insert({"user_id": user_id, "webhook": webhook}).execute()
 
-    await interaction.response.send_message(f"✅ Webhook setat la:\n{webhook}", ephemeral=True)
+    await interaction.response.send_message(
+        f"Webhook set `{webhook}`",
+        ephemeral=True
+    )
 
 
 # ---------------------------
 # SET USERNAME
 # ---------------------------
-@tree.command(name="setusername", description="Setează username-ul tău")
+@tree.command(name="setusername", description="Set your username")
 async def set_username(interaction: discord.Interaction, username: str):
     user_id = str(interaction.user.id)
 
@@ -66,57 +69,62 @@ async def set_username(interaction: discord.Interaction, username: str):
     else:
         supabase.table("elements").insert({"user_id": user_id, "username": username}).execute()
 
-    await interaction.response.send_message(f"✅ Username setat la: **{username}**", ephemeral=True)
+    await interaction.response.send_message(
+        f"Username set `{username}`",
+        ephemeral=True
+    )
 
 
 # ---------------------------
-# GENERATE ELEMENT SCRIPT
+# GENERATE ELEMENT SCRIPT (shows ID, not KEY)
 # ---------------------------
-@tree.command(name="generate", description="Generează scriptul Element")
+@tree.command(name="generate", description="Generate your Element Script")
 async def generate(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
     existing = supabase.table("elements").select("id, webhook, username, key").eq("user_id", user_id).execute()
 
     if not existing.data:
         await interaction.response.send_message(
-            "❌ Nu există un script generat. Folosește `/setwebhook` și `/setusername` mai întâi.",
+            "❌ No record found. Please use `/setwebhook` and `/setusername` first.",
             ephemeral=True
         )
         return
 
     element = existing.data[0]
     element_id = element["id"]
-    webhook = element.get("webhook", "⚠️ Nu este setat")
-    username = element.get("username", "⚠️ Nu este setat")
+    webhook = element.get("webhook", "⚠️ Not set")
+    username = element.get("username", "⚠️ Not set")
 
-    # dacă nu are key, generăm unul nou
-    key = element.get("key")
-    if not key:
-        key = generate_key()
-        supabase.table("elements").update({"key": key}).eq("id", element_id).execute()
+    # ensure KEY exists in DB for autojoiner
+    if not element.get("key"):
+        new_key = generate_key()
+        supabase.table("elements").update({"key": new_key}).eq("id", element_id).execute()
 
     msg = (
-        f"**Your Element Script**\n"
-        f"🔗 Webhook: {webhook}\n"
-        f"👤 Username: {username}\n\n"
-        f'KEY="{key}"\n'
-        f'loadstring(game:HttpGet("{ELEMENT_URL}"))()'
+        "## Your Element Script\n"
+        f"Webhook: `{webhook}`\n"
+        f"Username: `{username}`\n\n"
+        "```lua\n"
+        f'ID="{element_id}";\n'
+        f'loadstring(game:HttpGet("{AUTOJOINER_URL}"))()\n'
+        "```"
     )
 
     await interaction.response.send_message(msg, ephemeral=True)
 
 
 # ---------------------------
-# GENERATE AUTOJOINER SCRIPT
+# GENERATE AUTOJOINER SCRIPT (shows KEY + loadstring)
 # ---------------------------
-@tree.command(name="generate-autojoiner", description="Generează scriptul Auto Joiner")
+@tree.command(name="generate-autojoiner", description="Generate your Auto Joiner Script")
 async def generate_autojoiner(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
 
     existing = supabase.table("elements").select("id, key").eq("user_id", user_id).execute()
     if not existing.data:
         await interaction.response.send_message(
-            "❌ Nu există un script generat. Folosește `/generate` mai întâi.", ephemeral=True
+            "❌ No record found. Please use `/generate` first.",
+            ephemeral=True
         )
         return
 
@@ -124,15 +132,16 @@ async def generate_autojoiner(interaction: discord.Interaction):
     element_id = element["id"]
     key = element.get("key")
 
-    # dacă nu are key, generăm unul nou
     if not key:
         key = generate_key()
         supabase.table("elements").update({"key": key}).eq("id", element_id).execute()
 
     msg = (
-        "⚠️ DON'T SHARE! THIS CONTAINS YOUR PRIVATE KEY! ⚠️\n\n"
+        "## DON'T SHARE! THIS CONTAINS YOUR PRIVATE KEY!\n\n"
+        "```lua\n"
         f'KEY="{key}"\n'
-        f'loadstring(game:HttpGet("{AUTOJOINER_URL}"))()'
+        f'loadstring(game:HttpGet("{AUTOJOINER_URL}"))()\n'
+        "```"
     )
 
     await interaction.response.send_message(msg, ephemeral=True)
