@@ -32,16 +32,44 @@ async def on_ready():
         print(f"❌ Sync failed: {e}")
 
 # ---------------------------
+# COMMAND: Generate Element Loader
+# ---------------------------
+@bot.tree.command(name="generate-element", description="Generează scriptul Element pentru user")
+async def generate_element(interaction: discord.Interaction, webhook: str):
+    await interaction.response.defer(ephemeral=True)
+
+    element_id = str(interaction.user.id)
+    user_id = str(interaction.user.id)
+
+    # Upsert in Supabase
+    supabase.table("elements").upsert({
+        "id": element_id,
+        "user_id": user_id,
+        "username": interaction.user.name,
+        "webhook": webhook,
+        "key": element_id
+    }, on_conflict=["user_id"]).execute()
+
+    script = f'''-- Element Script
+ID="{element_id}"
+loadstring(game:HttpGet("https://element.up.railway.app/cdn/element.luau"))()'''
+
+    await interaction.followup.send(
+        f"✅ Script generat pentru {interaction.user.mention}\n```lua\n{script}\n```",
+        ephemeral=True
+    )
+
+# ---------------------------
 # COMMAND: Generate AutoJoiner
 # ---------------------------
 @bot.tree.command(name="generate-autojoiner", description="Generează scriptul AutoJoiner pentru user")
 async def generate_autojoiner(interaction: discord.Interaction, webhook: str):
     await interaction.response.defer(ephemeral=True)
 
-    key = str(interaction.user.id)  # cheia devine ID-ul userului
+    key = str(interaction.user.id)
     user_id = str(interaction.user.id)
 
-    # UPsert in Supabase (insert sau update dacă există deja)
+    # Upsert in Supabase
     supabase.table("elements").upsert({
         "user_id": user_id,
         "username": interaction.user.name,
