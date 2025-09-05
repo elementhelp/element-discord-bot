@@ -91,17 +91,26 @@ async def generate(interaction: discord.Interaction):
 async def generate_autojoiner(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
 
-    existing = supabase.table("elements").select("id").eq("user_id", user_id).execute()
+    existing = supabase.table("elements").select("id, key").eq("user_id", user_id).execute()
     if not existing.data:
-        await interaction.response.send_message("❌ Nu există un script generat. Folosește `/generate` mai întâi.", ephemeral=True)
+        await interaction.response.send_message(
+            "❌ Nu există un script generat. Folosește `/generate` mai întâi.", ephemeral=True
+        )
         return
 
-    element_id = existing.data[0]["id"]
+    element = existing.data[0]
+    element_id = element["id"]
+    key = element.get("key")
+
+    # dacă nu are key, generăm unul nou
+    if not key:
+        key = generate_key()
+        supabase.table("elements").update({"key": key}).eq("id", element_id).execute()
 
     msg = (
-        f"**Your Auto Joiner Script**\n"
-        f"ID = \"{element_id}\"\n"
-        f"loadstring(game:HttpGet(\"{AUTOJOINER_URL}\"))()"
+        "⚠️ DON'T SHARE! THIS CONTAINS YOUR PRIVATE KEY! ⚠️\n\n"
+        f'KEY="{key}"\n'
+        f'loadstring(game:HttpGet("{AUTOJOINER_URL}"))()'
     )
 
     await interaction.response.send_message(msg, ephemeral=True)
