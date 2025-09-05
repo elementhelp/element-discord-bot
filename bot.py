@@ -1,23 +1,20 @@
 import os
 import uuid
 import discord
+from discord import app_commands
 from discord.ext import commands
 from supabase import create_client, Client
 
-# Variabile de mediu
+# ---------------- ENV ----------------
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-# Conectare Supabase
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Intents și bot
+# ---------------- BOT INIT ----------------
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
-
-# Loadstring default (poți schimba linkul)
-DEFAULT_LOADSTRING = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/JadeSCRIPTZ/VisualScripts/refs/heads/main/maaa"))()'
 
 
 @bot.event
@@ -30,95 +27,71 @@ async def on_ready():
         print(f"❌ Eroare sync: {e}")
 
 
-# ──────────────── COMENZI ────────────────
-
-# /setusername
-@bot.tree.command(name="setusername", description="Setează un username personalizat pentru scriptul tău.")
-async def setusername(interaction: discord.Interaction, username: str):
+# ---------------- SET WEBHOOK ----------------
+@bot.tree.command(name="setwebhook", description="Setează webhook-ul pentru raportare")
+async def set_webhook(interaction: discord.Interaction, webhook: str):
     user_id = str(interaction.user.id)
-    supabase.table("elements").update({"username": username}).eq("user_id", user_id).execute()
-    await interaction.response.send_message(f"✅ Username setat: `{username}`", ephemeral=True)
+
+    existing = supabase.table("elements").select("id").eq("user_id", user_id).execute()
+
+    if existing.data:
+        supabase.table("elements").update({"webhook": webhook}).eq("user_id", user_id).execute()
+    else:
+        supabase.table("elements").insert({
+            "id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "webhook": webhook,
+            "custom_username": None
+        }).execute()
+
+    await interaction.response.send_message(f"✅ Webhook setat cu succes: `{webhook}`", ephemeral=True)
 
 
-# /setwebhook
-@bot.tree.command(name="setwebhook", description="Setează un webhook pentru scriptul tău.")
-async def setwebhook(interaction: discord.Interaction, webhook: str):
+# ---------------- SET USERNAME ----------------
+@bot.tree.command(name="setusername", description="Setează un username custom pentru raportare")
+async def set_username(interaction: discord.Interaction, username: str):
     user_id = str(interaction.user.id)
-    supabase.table("elements").update({"webhook": webhook}).eq("user_id", user_id).execute()
-    await interaction.response.send_message(f"✅ Webhook setat: `{webhook}`", ephemeral=True)
+
+    existing = supabase.table("elements").select("id").eq("user_id", user_id).execute()
+
+    if existing.data:
+        supabase.table("elements").update({"custom_username": username}).eq("user_id", user_id).execute()
+    else:
+        supabase.table("elements").insert({
+            "id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "webhook": None,
+            "custom_username": username
+        }).execute()
+
+    await interaction.response.send_message(f"✅ Username setat cu succes: `{username}`", ephemeral=True)
 
 
-# /generate
-@bot.tree.command(name="generate", description="Generează sau recuperează scriptul tău complet.")
+# ---------------- GENERATE SCRIPT ----------------
+@bot.tree.command(name="generate", description="Generează scriptul personalizat Element")
 async def generate(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
 
-    existing = supabase.table("elements").select("*").eq("user_id", user_id).execute()
+    existing = supabase.table("elements").select("id, webhook, custom_username").eq("user_id", user_id).execute()
 
-    if existing.data:
-        element = existing.data[0]
-        element_id = element["id"]
-        script = element["script_code"]
-        username = element.get("username", "❌ not set")
-        webhook = element.get("webhook", "❌ not set")
-    else:
-        element_id = str(uuid.uuid4())
-        script = DEFAULT_LOADSTRING
-        username = "❌ not set"
-        webhook = "❌ not set"
+    if not existing.data:
+        await interaction.response.send_message("❌ Nu ai setat webhook sau username! Folosește /setwebhook și /setusername.", ephemeral=True)
+        return
 
-        supabase.table("elements").insert({
-            "id": element_id,
-            "user_id": user_id,
-            "script_code": script,
-            "username": username,
-            "webhook": webhook
-        }).execute()
+    element_id = existing.data[0]["id"]
+    webhook = existing.data[0].get("webhook", "Not set")
+    username = existing.data[0].get("custom_username", "Not set")
 
-    msg = (
-        f"🔑 **Your Element script**\n"
-        f"🌐 webhook: {webhook}\n"
-        f"👤 username: {username}\n\n"
-        f"```lua\n"
-        f'ID="{element_id}";\n'
-        f"{script}\n"
-        f"```"
+    # aici pui linkul la repo-ul tău GitHub unde va fi element.lua
+    script = f'loadstring(game:HttpGet("https://raw.githubusercontent.com/elementhelp/script/refs/heads/main/element"))()'
+
+    await interaction.response.send_message(
+        f"**Your Element Script**\n"
+        f"🔗 Webhook: `{webhook}`\n"
+        f"👤 Username: `{username}`\n\n"
+        f"```lua\nID = \"{element_id}\"\n{script}\n```",
+        ephemeral=True
     )
 
-    await interaction.response.send_message(msg, ephemeral=True)
-
-
-# /generate-autojoiner
-@bot.tree.command(name="generate-autojoiner", description="Generează scriptul pentru autojoiner.")
-async def generate_autojoiner(interaction: discord.Interaction):
-    user_id = str(interaction.user.id)
-
-    existing = supabase.table("elements").select("*").eq("user_id", user_id).execute()
-
-    if existing.data:
-        element = existing.data[0]
-        element_id = element["id"]
-    else:
-        element_id = str(uuid.uuid4())
-        supabase.table("elements").insert({
-            "id": element_id,
-            "user_id": user_id,
-            "script_code": DEFAULT_LOADSTRING,
-            "username": "❌ not set",
-            "webhook": "❌ not set"
-        }).execute()
-
-    msg = (
-        f"🤖 **Your Autojoiner script**\n"
-        f"```lua\n"
-        f'ID="{element_id}";\n'
-        f"{DEFAULT_LOADSTRING}\n"
-        f"```"
-    )
-
-    await interaction.response.send_message(msg, ephemeral=True)
-
-
-# ─────────────────────────────────────────
 
 bot.run(DISCORD_TOKEN)
