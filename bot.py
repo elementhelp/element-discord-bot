@@ -2,7 +2,6 @@ import os
 import uuid
 import secrets
 import discord
-from discord import app_commands
 from discord.ext import commands
 from supabase import create_client, Client
 
@@ -52,10 +51,10 @@ async def on_ready():
 async def setwebhook(interaction: discord.Interaction, webhook: str):
     user_id = str(interaction.user.id)
 
-    supabase.table("elements").upsert({
-        "user_id": user_id,
-        "webhook": webhook
-    }, on_conflict=["user_id"]).execute()
+    supabase.table("users").upsert({
+        "custom_id": user_id,
+        "webhook_url": webhook
+    }, on_conflict=["custom_id"]).execute()
 
     await interaction.response.send_message(
         f"✅ Webhook set `{webhook}`", ephemeral=True
@@ -68,10 +67,10 @@ async def setwebhook(interaction: discord.Interaction, webhook: str):
 async def setusername(interaction: discord.Interaction, username: str):
     user_id = str(interaction.user.id)
 
-    supabase.table("elements").upsert({
-        "user_id": user_id,
+    supabase.table("users").upsert({
+        "custom_id": user_id,
         "username": username
-    }, on_conflict=["user_id"]).execute()
+    }, on_conflict=["custom_id"]).execute()
 
     await interaction.response.send_message(
         f"✅ Username set `{username}`", ephemeral=True
@@ -84,26 +83,31 @@ async def setusername(interaction: discord.Interaction, username: str):
 async def generate(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
 
-    existing = supabase.table("elements").select("id, username, webhook").eq("user_id", user_id).execute()
-    record = existing.data[0] if existing.data else None
+    # Get user info
+    user_data = supabase.table("users").select("username, webhook_url").eq("custom_id", user_id).execute()
+    user_record = user_data.data[0] if user_data.data else None
 
-    if not record:
+    if not user_record:
         await interaction.response.send_message(
             "❌ Please set webhook and username first using `/setwebhook` and `/setusername`.",
             ephemeral=True
         )
         return
 
-    element_id = record.get("id") or generate_id()
+    # Check if element entry exists
+    existing = supabase.table("elements").select("id").eq("custom_id", user_id).execute()
+    element_record = existing.data[0] if existing.data else None
 
-    # Save/update if missing ID
+    element_id = element_record["id"] if element_record else generate_id()
+
+    # Save/update element record
     supabase.table("elements").upsert({
-        "user_id": user_id,
+        "custom_id": user_id,
         "id": element_id
-    }, on_conflict=["user_id"]).execute()
+    }, on_conflict=["custom_id"]).execute()
 
-    webhook = record.get("webhook", "⚠️ Not set")
-    username = record.get("username", "⚠️ Not set")
+    webhook = user_record.get("webhook_url", "⚠️ Not set")
+    username = user_record.get("username", "⚠️ Not set")
 
     msg = (
         f"## Your Element Script\n"
@@ -124,18 +128,19 @@ async def generate(interaction: discord.Interaction):
 async def generate_autojoiner(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
 
-    existing = supabase.table("elements").select("id, key").eq("user_id", user_id).execute()
+    # Check existing element
+    existing = supabase.table("elements").select("id, key").eq("custom_id", user_id).execute()
     record = existing.data[0] if existing.data else None
 
     element_id = record["id"] if record and record.get("id") else generate_id()
     key = record["key"] if record and record.get("key") else generate_key()
 
-    # Upsert to Supabase
+    # Upsert element
     supabase.table("elements").upsert({
-        "user_id": user_id,
+        "custom_id": user_id,
         "id": element_id,
         "key": key
-    }, on_conflict=["user_id"]).execute()
+    }, on_conflict=["custom_id"]).execute()
 
     msg = (
         f"## ⚠️ DON'T SHARE! THIS CONTAINS YOUR PRIVATE KEY! ⚠️\n\n"
