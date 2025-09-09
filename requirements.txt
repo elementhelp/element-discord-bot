@@ -1,5 +1,3 @@
-discord.py
-supabase
-fastapi
-uvicorn
-requests
+discord.py==2.3.2
+supabase==2.3.4
+python-dotenv==1.0.0
