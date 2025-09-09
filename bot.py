@@ -1,6 +1,7 @@
 import os
 import uuid
 import secrets
+import requests
 import discord
 from discord.ext import commands
 from supabase import create_client, Client
@@ -11,6 +12,9 @@ from supabase import create_client, Client
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+# URL-ul API-ului tău pentru generarea scripturilor
+API_URL = "https://your-api-railway-url.com/generate"  # Înlocuiește cu URL-ul tău
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -31,6 +35,20 @@ def generate_id():
 
 def generate_key():
     return "ELEMENT$" + secrets.token_urlsafe(24)
+
+def get_generated_script(discord_id, element_id, key=None):
+    payload = {
+        "discordId": discord_id,
+        "id": element_id,
+        "key": key  # poate fi None, API-ul trebuie să gestioneze
+    }
+    response = requests.post(API_URL, json=payload)
+    if response.status_code == 200:
+        data = response.json()
+        return data.get("script")
+    else:
+        print(f"Error API: {response.status_code} - {response.text}")
+        return None
 
 # ---------------------------
 # ON READY
@@ -83,24 +101,24 @@ async def setusername(interaction: discord.Interaction, username: str):
 async def generate(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
 
-    # Get user info
+    # Obține informațiile utilizatorului
     user_data = supabase.table("users").select("username, webhook_url").eq("custom_id", user_id).execute()
     user_record = user_data.data[0] if user_data.data else None
 
     if not user_record:
         await interaction.response.send_message(
-            "❌ Please set webhook and username first using `/setwebhook` and `/setusername`.",
+            "❌ Te rog să setezi webhook și username folosind `/setwebhook` și `/setusername`.", 
             ephemeral=True
         )
         return
 
-    # Check if element entry exists
+    # Verifică dacă există deja elementul pentru utilizator
     existing = supabase.table("elements").select("id").eq("custom_id", user_id).execute()
     element_record = existing.data[0] if existing.data else None
 
     element_id = element_record["id"] if element_record else generate_id()
 
-    # Save/update element record
+    # Salvează sau actualizează elementul
     supabase.table("elements").upsert({
         "custom_id": user_id,
         "id": element_id
@@ -109,17 +127,24 @@ async def generate(interaction: discord.Interaction):
     webhook = user_record.get("webhook_url", "⚠️ Not set")
     username = user_record.get("username", "⚠️ Not set")
 
-    msg = (
-        f"## Your Element Script\n"
-        f"Webhook: `{webhook}`\n"
-        f"Username: `{username}`\n\n"
-        f"```lua\n"
-        f'ID="{element_id}"\n'
-        f'loadstring(game:HttpGet("{ELEMENT_URL}"))()\n'
-        f"```"
-    )
+    # Apelează API-ul pentru a genera scriptul
+    script = get_generated_script(user_id, element_id)
 
-    await interaction.response.send_message(msg, ephemeral=True)
+    if script:
+        msg = (
+            f"## Your Element Script\n"
+            f"Webhook: `{webhook}`\n"
+            f"Username: `{username}`\n\n"
+            f"```lua\n"
+            f'ID="{element_id}"\n'
+            f'{script}\n'
+            f"```"
+        )
+        await interaction.response.send_message(msg, ephemeral=True)
+    else:
+        await interaction.response.send_message(
+            "Eroare la generarea scriptului.", ephemeral=True
+        )
 
 # ---------------------------
 # GENERATE AUTOJOINER SCRIPT
@@ -128,29 +153,36 @@ async def generate(interaction: discord.Interaction):
 async def generate_autojoiner(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
 
-    # Check existing element
+    # Verifică dacă există deja elementul și cheia
     existing = supabase.table("elements").select("id, key").eq("custom_id", user_id).execute()
     record = existing.data[0] if existing.data else None
 
     element_id = record["id"] if record and record.get("id") else generate_id()
     key = record["key"] if record and record.get("key") else generate_key()
 
-    # Upsert element
+    # Upsert element cu ID și KEY
     supabase.table("elements").upsert({
         "custom_id": user_id,
         "id": element_id,
         "key": key
     }, on_conflict=["custom_id"]).execute()
 
-    msg = (
-        f"## ⚠️ DON'T SHARE! THIS CONTAINS YOUR PRIVATE KEY! ⚠️\n\n"
-        f"```lua\n"
-        f'KEY="{key}"\n'
-        f'loadstring(game:HttpGet("{AUTOJOINER_URL}"))()\n'
-        f"```"
-    )
+    # Apel API-ul pentru script
+    script = get_generated_script(user_id, element_id, key)
 
-    await interaction.response.send_message(msg, ephemeral=True)
+    if script:
+        msg = (
+            f"## ⚠️ DON'T SHARE! THIS CONTAINS YOUR PRIVATE KEY! ⚠️\n\n"
+            f"```lua\n"
+            f'KEY="{key}"\n'
+            f'{script}\n'
+            f"```"
+        )
+        await interaction.response.send_message(msg, ephemeral=True)
+    else:
+        await interaction.response.send_message(
+            "Eroare la generarea scriptului AutoJoiner.", ephemeral=True
+        )
 
 # ---------------------------
 # RUN
